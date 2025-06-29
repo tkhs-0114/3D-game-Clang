@@ -1,0 +1,26 @@
+{
+  "name": "C Dev Container",
+  "dockerFile": "Dockerfile",
+  "forwardPorts": [
+    22
+  ],
+  "extensions": [
+    "ms-vscode.cpptools",
+    "ms-vscode.cmake-tools",
+    "ms-vscode.makefile-tools"
+  ],
+  "settings": {
+    "C_Cpp.intelliSenseEngine": "Default",
+    "C_Cpp.formatting": "clangFormat",
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "files.exclude": {
+      "*.o": true
+    },
+    "editor.indentSize": "2",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    }
+  },
+  "postCreateCommand": "make"
+}
