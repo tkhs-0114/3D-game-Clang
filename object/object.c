@@ -1,16 +1,18 @@
 #include "object.h"
-// #include "../display/display.h"
-// #include "../matrix/matrix.h"
+#include <pthread.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <stdbool.h>
 
 double init_matrix[4][4] = {{1.0, 0.0, 0.0, 0.0},
                             {0.0, 1.0, 0.0, 0.0},
                             {0.0, 0.0, 1.0, 0.0},
                             {0.0, 0.0, 0.0, 1.0}};
+// 並列処理用のCPUのコア数
+long num_cores = 1; // Will be set at runtime
+void init_num_cores() { num_cores = sysconf(_SC_NPROCESSORS_ONLN); }
 
 void load_vertex(char *input_file, double object_v[MAX_VERTEX][4]) {
   FILE *fp = fopen(input_file, "r");
@@ -86,24 +88,6 @@ int load(object *obj, int total_frame, int loaded_frame) {
   return loaded_frame;
 }
 void calc_matrix(object *obj) {
-  bool changed = false;
-  
-  // 位置・回転の変更をチェック
-  for (int i = 0; i < 3; i++) {
-    if (obj->position[i] != obj->prev_position[i] ||
-        obj->rotation[i] != obj->prev_rotation[i] ||
-        obj->position_local[i] != obj->prev_position_local[i] ||
-        obj->rotation_local[i] != obj->prev_rotation_local[i]) {
-      changed = true;
-      break;
-    }
-  }
-  
-  // 変更がない場合は行列計算をスキップ
-  if (!changed && !obj->matrix_dirty) {
-    return;
-  }
-  
   for (int i = 0; i < 3; i++) {
     if (obj->rotation_local[i] < obj->rotation_set_local[i]) {
       obj->rotation_local[i] += obj->rotation_speed_local;
@@ -136,90 +120,123 @@ void calc_matrix(object *obj) {
   multPx4(obj->position_local, obj->matrix);
   multRx4(obj->rotation, obj->matrix);
   multPx4(obj->position, obj->matrix);
-  
-  // 前フレームの値を保存
-  for (int i = 0; i < 3; i++) {
-    obj->prev_position[i] = obj->position[i];
-    obj->prev_rotation[i] = obj->rotation[i];
-    obj->prev_position_local[i] = obj->position_local[i];
-    obj->prev_rotation_local[i] = obj->rotation_local[i];
-  }
-  obj->matrix_dirty = false;
 }
-void draw_object(int display[H][W], object *obj, object *camera, int c) {
-  mult4x4(camera->matrix, obj->matrix);
 
-  // 事前に全頂点を変換（キャッシュ化）
-  static double transformed_vertices[MAX_VERTEX][4];
-  static int cached_state = -1, cached_frame = -1;
-  static object *cached_obj = NULL;
-  static int cached_vertex_count = 0;
+// 並列処理用の構造体
+typedef struct {
+  object *obj;
+  int (*display)[W];
+  int color;
+  int start_line;
+  int end_line;
+} draw_data;
 
-  // キャッシュが無効な場合のみ頂点変換を実行
-  if (cached_obj != obj || cached_state != obj->state ||
-      cached_frame != obj->frame) {
-    int vertex_count = 0;
-    // 実際に使用される頂点数をカウント（最適化：キャッシュ化）
-    if (cached_obj != obj || cached_state != obj->state) {
-      for (int i = 0; i < MAX_LINE; i++) {
-        if (obj->line[i][0] == 0 && obj->line[i][1] == 0)
-          break;
-        if (obj->line[i][0] > vertex_count)
-          vertex_count = obj->line[i][0];
-        if (obj->line[i][1] > vertex_count)
-          vertex_count = obj->line[i][1];
-      }
-      vertex_count++;
-      cached_vertex_count = vertex_count;
-    } else {
-      vertex_count = cached_vertex_count;
-    }
+void draw_objline(void *arg) {
+  draw_data *data = (draw_data *)arg;
 
-    // 必要な頂点のみ変換（メモリアクセス最適化）
-    double (*src_vertices)[4] = obj->vertex[obj->state][obj->frame];
-    for (int v = 0; v < vertex_count; v++) {
-      // 早期Z-クリッピング：変換前にZ座標をチェック
-      double local_z = src_vertices[v][2];
-      if (local_z > -0.1) { // カメラに近すぎる場合はスキップ
-        transformed_vertices[v][2] = -1.0; // 無効マーク
-        continue;
-      }
-      
-      // メモリコピー最適化
-      transformed_vertices[v][0] = src_vertices[v][0];
-      transformed_vertices[v][1] = src_vertices[v][1];
-      transformed_vertices[v][2] = src_vertices[v][2];
-      transformed_vertices[v][3] = src_vertices[v][3];
-      mult4x1(obj->matrix, transformed_vertices[v]);
-    }
-
-    cached_obj = obj;
-    cached_state = obj->state;
-    cached_frame = obj->frame;
-  }
-
-  // 線分描画（事前変換済み頂点を使用）
-  for (int i = 0; i < MAX_LINE; i++) {
-    if (obj->line[i][0] == 0 && obj->line[i][1] == 0)
+  for (int i = data->start_line; i < data->end_line; i++) {
+    if (data->obj->line[i][0] == 0 && data->obj->line[i][1] == 0)
       break;
 
-    double *v1 = transformed_vertices[obj->line[i][0]];
-    double *v2 = transformed_vertices[obj->line[i][1]];
+    // 頂点を取得して変換
+    double v1[4], v2[4];
 
-    // 早期Z-クリッピング結果をチェック
-    if (v1[2] <= 0.0001 || v2[2] <= 0.0001 || v1[2] == -1.0 || v2[2] == -1.0) {
+    // 頂点1をコピーして変換
+    v1[0] = data->obj->vertex[data->obj->state][data->obj->frame]
+                             [data->obj->line[i][0]][0];
+    v1[1] = data->obj->vertex[data->obj->state][data->obj->frame]
+                             [data->obj->line[i][0]][1];
+    v1[2] = data->obj->vertex[data->obj->state][data->obj->frame]
+                             [data->obj->line[i][0]][2];
+    v1[3] = data->obj->vertex[data->obj->state][data->obj->frame]
+                             [data->obj->line[i][0]][3];
+    mult4x1(data->obj->matrix, v1);
+
+    // 頂点2をコピーして変換
+    v2[0] = data->obj->vertex[data->obj->state][data->obj->frame]
+                             [data->obj->line[i][1]][0];
+    v2[1] = data->obj->vertex[data->obj->state][data->obj->frame]
+                             [data->obj->line[i][1]][1];
+    v2[2] = data->obj->vertex[data->obj->state][data->obj->frame]
+                             [data->obj->line[i][1]][2];
+    v2[3] = data->obj->vertex[data->obj->state][data->obj->frame]
+                             [data->obj->line[i][1]][3];
+    mult4x1(data->obj->matrix, v2);
+
+    // Z座標チェック（クリッピング）
+    if (v1[2] <= 0.0001 || v2[2] <= 0.0001) {
       continue;
     }
 
-    // 透視投影（最適化：除算の最小化）
-    double inv_z1 = 1.0 / v1[2];
-    double inv_z2 = 1.0 / v2[2];
-    int x1 = (int)(160 * v1[0] * inv_z1) + (W >> 1);
-    int y1 = (int)(-120 * v1[1] * inv_z1) + (H >> 1);
-    int x2 = (int)(160 * v2[0] * inv_z2) + (W >> 1);
-    int y2 = (int)(-120 * v2[1] * inv_z2) + (H >> 1);
+    // 透視投影
+    int x1 = (int)(160 * v1[0] / v1[2]) + (W / 2);
+    int y1 = (int)(-120 * v1[1] / v1[2]) + (H / 2);
+    int x2 = (int)(160 * v2[0] / v2[2]) + (W / 2);
+    int y2 = (int)(-120 * v2[1] / v2[2]) + (H / 2);
 
-    draw_line(display, x1, y1, x2, y2, c);
+    draw_line(data->display, x1, y1, x2, y2, data->color);
   }
+}
+
+void draw_object(int display[H][W], object *obj, object *camera, int c) {
+  mult4x4(camera->matrix, obj->matrix);
+
+  // 実際の線分数を数える
+  int total_lines = 0;
+  for (int i = 0; i < MAX_LINE; i++) {
+    if (obj->line[i][0] == 0 && obj->line[i][1] == 0)
+      break;
+    total_lines++;
+  }
+
+  // 並列処理
+  pthread_t *threads = malloc(num_cores * sizeof(pthread_t));
+  draw_data *thread_data = malloc(num_cores * sizeof(draw_data));
+
+  if (!threads || !thread_data) {
+    free(threads);
+    free(thread_data);
+    return;
+  }
+
+  // 各スレッドに線分範囲を割り当て
+  int lines_per_thread = total_lines / num_cores;
+  int remaining_lines = total_lines % num_cores;
+
+  for (int i = 0; i < num_cores; i++) {
+    thread_data[i].obj = obj;
+    thread_data[i].display = display;
+    thread_data[i].color = c;
+
+    // 線分範囲の計算
+    thread_data[i].start_line = i * lines_per_thread;
+    thread_data[i].end_line = (i + 1) * lines_per_thread;
+
+    // 余りの線分を最後のスレッドに追加
+    if (i == num_cores - 1) {
+      thread_data[i].end_line += remaining_lines;
+    }
+
+    if (pthread_create(&threads[i], NULL, (void *(*)(void *))draw_objline,
+                       &thread_data[i]) != 0) {
+      perror("Failed to create thread");
+      // エラー時は作成済みスレッドの終了を待つ
+      for (int j = 0; j < i; j++) {
+        pthread_join(threads[j], NULL);
+      }
+      free(threads);
+      free(thread_data);
+      return;
+    }
+  }
+
+  // すべてのスレッドの終了を待つ
+  for (int i = 0; i < num_cores; i++) {
+    pthread_join(threads[i], NULL);
+  }
+
+  // リソースを解放
+  free(threads);
+  free(thread_data);
 }
 //

@@ -20,7 +20,7 @@ void game() {
   loaded_frame = load(&player, total_frame, loaded_frame);
   loaded_frame = load(&boss, total_frame, loaded_frame);
   loaded_frame = load(&stage, total_frame, loaded_frame);
-
+  init_num_cores();
   game_init();
 
   game_loop();
