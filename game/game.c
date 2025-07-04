@@ -1,6 +1,8 @@
 #include "./game.h"
 #include "../display/display.h"
 #include "../matrix/matrix.h"
+#include <sys/time.h>
+#include <time.h>
 #include <unistd.h>
 
 int load_data();
@@ -10,6 +12,13 @@ object player;
 object boss;
 object camera;
 object stage;
+
+// 現在時刻をマイクロ秒で取得
+long long get_current_time_us() {
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  return tv.tv_sec * 1000000LL + tv.tv_usec;
+}
 
 void game() {
   int total_frame;
@@ -196,7 +205,17 @@ void game_loop() {
   int display[H][W];
   int key[7] = {0, 0, 0, 0, 0, 0, 0};
   bool loop = true;
+
+  // フレームレート制御用の変数
+  const long long target_frame_time = 50000; // 50ms = 50000μs (20FPS)
+  long long frame_start_time;
+  long long frame_end_time;
+  long long elapsed_time;
+  long long sleep_time;
+
   while (loop > 0) {
+    frame_start_time = get_current_time_us();
+
     get_key(key);
     if (key[7]) {
       key[7] = 0; // Reset exit key
@@ -224,7 +243,14 @@ void game_loop() {
 
     print_display(display);
 
-    usleep(50000);
+    // フレームレート制御
+    frame_end_time = get_current_time_us();
+    elapsed_time = frame_end_time - frame_start_time;
+    sleep_time = target_frame_time - elapsed_time;
+
+    if (sleep_time > 0) {
+      usleep(sleep_time);
+    }
   }
   player.rotation_set_local[0] = 3.14f / 2;
   for (int i = 0; i < 100; i++) {
