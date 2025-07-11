@@ -2,7 +2,7 @@
 #include <stdbool.h>
 int pre_key_count = 0;
 char buf[128];
-void apply_key(int key[7]);
+void apply_key(int key[8]);
 int keyToNum(char key) {
   switch (key) {
   case 'q':
@@ -19,12 +19,14 @@ int keyToNum(char key) {
     return 3;
   case 'd':
     return 4;
+  case 'o':
+    return 8;
   default:
     return 0;
   }
 }
 
-void get_key(int keys[7]) {
+void get_key(int keys[8]) {
   getstr(buf);
 
   switch (buf[0]) {
@@ -66,7 +68,7 @@ void get_key(int keys[7]) {
     }
   }
 }
-void apply_key(int keys[7]) {
+void apply_key(int keys[8]) {
   switch (buf[0]) {
   case 'w':
     keys[1] = 1;
@@ -87,6 +89,9 @@ void apply_key(int keys[7]) {
     keys[4] = 1;
     keys[0] = 4;
     keys[3] = 0;
+    break;
+  case 'o':
+    keys[7] = 1; // 'o' key is stored at index 7 (8th element)
     break;
   default:
     keys[0] = 0;

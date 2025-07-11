@@ -1,6 +1,6 @@
 #include "./game.h"
 #include <math.h>
-void update(int key[7], object *player, object *boss, object *camera) {
+void update(int key[8], object *player, object *boss, object *camera) {
   camera->position[0] = player->position[0];
   camera->position[1] = player->position[1];
   camera->position[2] = player->position[2];
@@ -40,7 +40,7 @@ void update(int key[7], object *player, object *boss, object *camera) {
       }
     }
   }
-  if (boss->state == 2 && boss->frame == boss->attack_frame) {
+  if (boss->state == 2 && boss->frame == boss->attack2_frame) {
     if (distance <= boss->attack2_length && player->state != 3) {
       double target = atan2(-1 * boss->position[0] + player->position[0],
                             -1 * boss->position[2] + player->position[2]);

@@ -5,7 +5,7 @@ void init();
 
 int main(int argc, char **argv) {
   init();
-  title();
+  title(argv[1], argv[2]);
 
   endwin();
   return 0;

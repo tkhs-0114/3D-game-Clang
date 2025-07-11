@@ -1,6 +1,6 @@
 #include "./game.h"
 #include <math.h>
-void player_update(int key[7], object *player, object *boss) {
+void player_update(int key[8], object *player, object *boss) {
   player->frame++;
 
   switch (player->state) {

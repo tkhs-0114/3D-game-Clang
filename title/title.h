@@ -1,1 +1,1 @@
-void title();
+void title(char *file, char *cmd);

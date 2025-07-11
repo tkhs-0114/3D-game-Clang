@@ -1,0 +1,8 @@
+data2/player/idle 40 100
+data2/player/walk 25 0.2
+data2/player/attack 35 20
+data2/player/dodge 35
+data2/boss/idle 80 100
+data2/boss/attack1 63 25
+data2/boss/attack2 80 38
+data/stage/tile 1
