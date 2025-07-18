@@ -17,7 +17,6 @@ void boss_update(int key[8], object *boss, object *player) {
   case 0: // Idle
     boss->frame = boss->frame % boss->frame_length[boss->state];
     if (wait_frame <= 0) {
-      boss->state = 1;
       boss->frame = 0;
       // ランダムの範囲で攻撃とプレイヤーを探すの割合を変える
       int rand_num = rand() % 100;

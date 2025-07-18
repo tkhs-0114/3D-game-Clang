@@ -202,9 +202,6 @@ void game_init(char *cmd) {
   camera.rotation_set[1] = 0;
   camera.rotation_set[2] = 0;
 
-  if (strcmp(cmd, "demo") == 0) {
-    player.position[2] = -13.5;
-  }
 }
 
 void game_loop() {
