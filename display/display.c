@@ -481,7 +481,7 @@ void draw_bar(int display[H][W], int x, int y, double p, int color) {
   draw_line(display, W - x, y, W - x, y + 10, color);
   draw_line(display, W - x, y + 10, x, y + 10, color);
   draw_line(display, x, y + 10, x, y, color);
-  for (int i = x; i < x + (W - x) * p; i++) {
+  for (int i = x; i < x + (W - x * 2) * p; i++) {
     draw_line(display, i, y + 1, i, y + 9, color);
   }
 }

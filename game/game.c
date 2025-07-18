@@ -1,27 +1,38 @@
 #include "./game.h"
 #include "../display/display.h"
 #include "../matrix/matrix.h"
+#include <sys/time.h>
+#include <time.h>
 #include <unistd.h>
 
+#include <math.h>
+
 int load_data();
-void game_init();
+void game_init(char *cmd);
 void game_loop();
 object player;
 object boss;
 object camera;
 object stage;
 
-void game() {
+// 現在時刻をマイクロ秒で取得
+long long get_current_time_us() {
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  return tv.tv_sec * 1000000LL + tv.tv_usec;
+}
+
+void game(char *file, char *cmd) {
   int total_frame;
   int loaded_frame = 0;
 
-  total_frame = load_data("data.txt");
+  total_frame = load_data(file);
 
   loaded_frame = load(&player, total_frame, loaded_frame);
   loaded_frame = load(&boss, total_frame, loaded_frame);
   loaded_frame = load(&stage, total_frame, loaded_frame);
-
-  game_init();
+  init_num_cores();
+  game_init(cmd);
 
   game_loop();
 }
@@ -86,7 +97,7 @@ int load_data(const char *filename) {
   total_frame += 1;
   return total_frame;
 }
-void game_init() {
+void game_init(char *cmd) {
   player.position[0] = 0.1;
   player.position[1] = 0;
   player.position[2] = -2;
@@ -144,11 +155,11 @@ void game_init() {
   boss.rotation_speed_local = 0.1;
   boss.attack_damage = 1000;
   boss.attack_range = 0.5;
-  boss.attack_length = 10;
+  boss.attack_length = 11;
   // boss.attack_frame
   boss.attack2_damage = 500;
   boss.attack2_range = 2.0;
-  boss.attack2_length = 5;
+  boss.attack2_length = 12;
   // boss.attack2_frame
 
   stage.position[0] = 0;
@@ -190,13 +201,26 @@ void game_init() {
   camera.rotation_set[0] = 0;
   camera.rotation_set[1] = 0;
   camera.rotation_set[2] = 0;
+
 }
 
 void game_loop() {
   int display[H][W];
-  int key[7] = {0, 0, 0, 0, 0, 0, 0};
+  int key[8] = {0, 0, 0, 0, 0, 0, 0, 0};
   bool loop = true;
+  int time_count = 0;
+
+  // フレームレート制御用の変数
+  const long long target_frame_time = 50000; // 50ms = 50000μs (20FPS)
+  long long frame_start_time;
+  long long frame_end_time;
+  long long elapsed_time;
+  long long sleep_time;
+
   while (loop > 0) {
+    time_count++;
+    frame_start_time = get_current_time_us();
+
     get_key(key);
     if (key[7]) {
       key[7] = 0; // Reset exit key
@@ -224,30 +248,68 @@ void game_loop() {
 
     print_display(display);
 
-    usleep(50000);
-  }
-  player.rotation_set_local[0] = 3.14f / 2;
-  for (int i = 0; i < 100; i++) {
-    get_key(key);
-    if (key[7]) {
-      key[7] = 0; // Reset exit key
-      break;
-    }
-    calc_matrix(&player);
-    calc_matrix(&boss);
-    calc_matrix(&stage);
-    calc_matrix(&camera);
-    inverse4(camera.matrix);
-    clear_display(display, 1);
-    draw_object(display, &stage, &camera, 3);
-    draw_object(display, &boss, &camera, 2);
-    draw_object(display, &player, &camera, 4);
-    draw_bar(display, 10, 5, (double)boss.hp / boss.max_hp, 2);
-    draw_text(display, 60, 30, "YOU DIED", 3, 2);
-    draw_text(display, 150, 60, "00:05", 2, 4);
-    print_display(display);
+    // フレームレート制御
+    frame_end_time = get_current_time_us();
+    elapsed_time = frame_end_time - frame_start_time;
+    sleep_time = target_frame_time - elapsed_time;
 
-    usleep(50000);
+    if (sleep_time > 0) {
+      usleep(sleep_time);
+    }
+  }
+  if (player.hp <= 0) {
+    player.rotation_set_local[0] = 3.14f / 2;
+    for (int i = 0; i < 100; i++) {
+      get_key(key);
+      if (key[7]) {
+        key[7] = 0; // Reset exit key
+        break;
+      }
+      calc_matrix(&player);
+      calc_matrix(&boss);
+      calc_matrix(&stage);
+      calc_matrix(&camera);
+      inverse4(camera.matrix);
+      clear_display(display, 1);
+      draw_object(display, &stage, &camera, 3);
+      draw_object(display, &boss, &camera, 2);
+      draw_object(display, &player, &camera, 4);
+      draw_bar(display, 10, 5, (double)boss.hp / boss.max_hp, 2);
+      draw_text(display, 60, 30, "YOU DIED", 3, 2);
+      char clear_time[16];
+      snprintf(clear_time, sizeof(clear_time), "%02d:%02d",
+               time_count / 20 / 60, (time_count / 20) % 60);
+      draw_text(display, 150, 60, clear_time, 2, 4);
+      print_display(display);
+
+      usleep(50000);
+    }
+  } else if (boss.hp <= 0) {
+    boss.rotation_set_local[0] = -3.14f / 2;
+    for (int i = 0; i < 100; i++) {
+      get_key(key);
+      if (key[7]) {
+        key[7] = 0; // Reset exit key
+        break;
+      }
+      calc_matrix(&player);
+      calc_matrix(&boss);
+      calc_matrix(&stage);
+      calc_matrix(&camera);
+      inverse4(camera.matrix);
+      clear_display(display, 1);
+      draw_object(display, &stage, &camera, 3);
+      draw_object(display, &boss, &camera, 2);
+      draw_object(display, &player, &camera, 4);
+      draw_bar(display, 10, 5, (double)boss.hp / boss.max_hp, 2);
+      draw_text(display, 60, 30, "GAME CLEAR", 2, 3);
+      char clear_time[16];
+      snprintf(clear_time, sizeof(clear_time), "%02d:%02d",
+               time_count / 20 / 60, (time_count / 20) % 60);
+      draw_text(display, 150, 60, clear_time, 2, 4);
+      print_display(display);
+
+      usleep(50000);
+    }
   }
 }
-//

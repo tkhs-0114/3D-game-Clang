@@ -7,13 +7,13 @@
 void draw_title();
 void help();
 int display[H][W];
-void title() {
+void title(char *file, char *cmd) {
   while (true) {
     draw_title();
     switch (getch()) {
       {
       case 'p':
-        game();
+        game(file, cmd);
         break;
       case 'h':
         help();
